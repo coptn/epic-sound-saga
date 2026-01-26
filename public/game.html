@@ -1301,6 +1301,13 @@
       masterGain.connect(audioCtx.destination);
       masterGain.gain.value = 0;
 
+      // Create a low-pass filter to remove harsh high frequencies
+      const lowpass = audioCtx.createBiquadFilter();
+      lowpass.type = 'lowpass';
+      lowpass.frequency.value = 800; // Cut off harsh highs
+      lowpass.Q.value = 0.7;
+      lowpass.connect(masterGain);
+
       function addOscillator(freq, waveType, gainVal, detuneVal = 0) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
@@ -1308,87 +1315,117 @@
         osc.frequency.value = freq;
         osc.detune.value = detuneVal;
         osc.connect(gain);
-        gain.connect(masterGain);
+        gain.connect(lowpass);
         gain.gain.value = gainVal;
         osc.start();
         oscillators.push({ osc, gain });
       }
 
+      // LFO for subtle modulation (makes sounds more organic)
+      function createLFO(targetParam, rate, depth) {
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        lfo.type = 'sine';
+        lfo.frequency.value = rate;
+        lfoGain.gain.value = depth;
+        lfo.connect(lfoGain);
+        lfoGain.connect(targetParam);
+        lfo.start();
+        oscillators.push({ osc: lfo, gain: lfoGain });
+      }
+
       switch(type) {
         case 'nature':
-          // Birds chirping simulation + wind
-          addOscillator(2000, 'sine', 0.03);
-          addOscillator(2400, 'sine', 0.02, 50);
-          addOscillator(1800, 'sine', 0.02, -30);
-          // Wind sound (low frequency noise-like)
-          addOscillator(80, 'triangle', 0.08);
-          addOscillator(120, 'triangle', 0.05, 10);
-          // Gentle pad
-          addOscillator(220, 'sine', 0.04);
-          addOscillator(330, 'sine', 0.03);
+          // Warm, peaceful forest ambience - all low frequencies
+          // Deep forest hum
+          addOscillator(65, 'sine', 0.15);
+          addOscillator(98, 'sine', 0.12);
+          // Gentle wind through trees
+          addOscillator(45, 'triangle', 0.1);
+          addOscillator(55, 'triangle', 0.08, 5);
+          // Distant birds (soft, not shrill)
+          addOscillator(330, 'sine', 0.02);
+          addOscillator(392, 'sine', 0.015);
+          // Warm pad
+          addOscillator(130, 'sine', 0.08);
+          addOscillator(196, 'sine', 0.06);
+          lowpass.frequency.value = 600;
           break;
           
         case 'olympus':
-          // Heavenly choir-like pads
-          addOscillator(440, 'sine', 0.06);
-          addOscillator(554, 'sine', 0.04); // Major third
-          addOscillator(659, 'sine', 0.03); // Fifth
-          addOscillator(880, 'sine', 0.02);
-          // Ethereal shimmer
-          addOscillator(1760, 'sine', 0.01, 5);
-          addOscillator(2200, 'sine', 0.008, -5);
+          // Heavenly, majestic choir-like pads
+          addOscillator(130, 'sine', 0.12); // C3
+          addOscillator(164, 'sine', 0.1);  // E3
+          addOscillator(196, 'sine', 0.08); // G3
+          addOscillator(262, 'sine', 0.06); // C4
+          // Soft ethereal layer
+          addOscillator(392, 'sine', 0.03);
+          addOscillator(523, 'sine', 0.02);
+          // Warm sub bass
+          addOscillator(65, 'sine', 0.1);
+          lowpass.frequency.value = 700;
           break;
           
         case 'underworld':
-          // Deep menacing drones
-          addOscillator(40, 'sawtooth', 0.12);
-          addOscillator(55, 'sawtooth', 0.08, 3);
-          addOscillator(82.5, 'triangle', 0.06);
-          // Dissonant high whispers
-          addOscillator(666, 'sine', 0.02);
-          addOscillator(700, 'sine', 0.015, -10);
-          // Rumbling bass
-          addOscillator(30, 'sine', 0.1);
+          // Deep, ominous drones - very low frequencies
+          addOscillator(32, 'sine', 0.2);    // Sub bass
+          addOscillator(48, 'triangle', 0.15);
+          addOscillator(64, 'sine', 0.12);
+          // Menacing minor chord
+          addOscillator(82, 'triangle', 0.1);  // E2
+          addOscillator(98, 'sine', 0.08);     // G2
+          addOscillator(110, 'sine', 0.06);    // A2
+          // Rumbling tension
+          addOscillator(40, 'sawtooth', 0.05);
+          lowpass.frequency.value = 400;
           break;
           
         case 'styx':
-          // Watery, eerie atmosphere
-          addOscillator(100, 'triangle', 0.08);
-          addOscillator(150, 'sine', 0.05, 7);
-          addOscillator(60, 'sawtooth', 0.06);
-          // Ghostly wails
-          addOscillator(400, 'sine', 0.02);
-          addOscillator(450, 'sine', 0.015, -15);
+          // Watery, mysterious atmosphere
+          addOscillator(55, 'sine', 0.15);
+          addOscillator(73, 'triangle', 0.12);
+          addOscillator(82, 'sine', 0.1);
+          // Eerie minor tones
+          addOscillator(110, 'sine', 0.08);
+          addOscillator(131, 'sine', 0.06); // Minor third
+          // Deep water rumble
+          addOscillator(35, 'sine', 0.12);
+          lowpass.frequency.value = 500;
           break;
           
         case 'battle':
-          // INTENSE boss battle music
-          // Heavy bass drums simulation
-          addOscillator(60, 'square', 0.15);
-          addOscillator(80, 'sawtooth', 0.12);
-          // Tension chords
-          addOscillator(110, 'sawtooth', 0.1);
-          addOscillator(138.6, 'sawtooth', 0.08); // Minor third
-          addOscillator(165, 'triangle', 0.06);
-          // High intensity
-          addOscillator(220, 'square', 0.05);
-          addOscillator(330, 'sawtooth', 0.04);
-          // Aggressive pulse
-          addOscillator(55, 'square', 0.1);
+          // Intense, driving battle music - powerful bass
+          // Heavy rhythmic bass
+          addOscillator(55, 'sawtooth', 0.12);
+          addOscillator(73, 'sawtooth', 0.1);
+          addOscillator(82, 'triangle', 0.1);
+          // Tension chord (A minor)
+          addOscillator(110, 'sawtooth', 0.08);
+          addOscillator(131, 'triangle', 0.06);
+          addOscillator(165, 'sine', 0.05);
+          // Driving pulse
+          addOscillator(41, 'square', 0.08);
+          addOscillator(62, 'square', 0.06);
+          // Sub bass power
+          addOscillator(27, 'sine', 0.15);
+          lowpass.frequency.value = 500;
           break;
           
         case 'mortal':
         default:
-          // Peaceful meadow atmosphere
-          addOscillator(200, 'sine', 0.04);
-          addOscillator(267, 'sine', 0.03);
-          addOscillator(300, 'sine', 0.025);
-          // Soft wind
-          addOscillator(100, 'triangle', 0.04);
+          // Peaceful meadow - warm and gentle
+          addOscillator(82, 'sine', 0.12);
+          addOscillator(110, 'sine', 0.1);
+          addOscillator(130, 'sine', 0.08);
+          // Soft breeze
+          addOscillator(50, 'triangle', 0.08);
+          addOscillator(65, 'triangle', 0.06);
+          lowpass.frequency.value = 500;
           break;
       }
 
-      return { oscillators, masterGain };
+      // Return with 'gain' property that volume controls expect
+      return { oscillators, masterGain, gain: masterGain };
     }
 
     function playBackgroundSound(sceneType) {
@@ -3423,12 +3460,12 @@
       document.getElementById('pause-menu').style.display = isPaused ? 'flex' : 'none';
       
       if (isPaused) {
-        if (currentBgSound && currentBgSound.gain) {
-          currentBgSound.gain.gain.value = soundVolume * musicVolume * 0.05;
+        if (currentBgSound && currentBgSound.masterGain) {
+          currentBgSound.masterGain.gain.setValueAtTime(soundVolume * musicVolume * 0.05, audioCtx.currentTime);
         }
       } else {
-        if (currentBgSound && currentBgSound.gain) {
-          currentBgSound.gain.gain.value = soundVolume * musicVolume * 0.15;
+        if (currentBgSound && currentBgSound.masterGain) {
+          currentBgSound.masterGain.gain.setValueAtTime(soundVolume * musicVolume * 0.2, audioCtx.currentTime);
         }
       }
     }
@@ -3436,16 +3473,16 @@
     document.getElementById('master-volume').addEventListener('input', (e) => {
       soundVolume = e.target.value / 100;
       document.getElementById('volume-value').textContent = e.target.value;
-      if (currentBgSound && currentBgSound.gain) {
-        currentBgSound.gain.gain.value = soundVolume * musicVolume * 0.15;
+      if (currentBgSound && currentBgSound.masterGain) {
+        currentBgSound.masterGain.gain.setValueAtTime(soundVolume * musicVolume * 0.2, audioCtx.currentTime);
       }
     });
 
     document.getElementById('music-volume').addEventListener('input', (e) => {
       musicVolume = e.target.value / 100;
       document.getElementById('music-value').textContent = e.target.value;
-      if (currentBgSound && currentBgSound.gain) {
-        currentBgSound.gain.gain.value = soundVolume * musicVolume * 0.15;
+      if (currentBgSound && currentBgSound.masterGain) {
+        currentBgSound.masterGain.gain.setValueAtTime(soundVolume * musicVolume * 0.2, audioCtx.currentTime);
       }
     });
 
