@@ -3494,6 +3494,11 @@
       
       createMortalRealm();
       
+      // IMPORTANT: Ensure player faces staircase (negative Z direction)
+      // yaw = Math.PI makes camera look toward -Z (where staircase is at z=-30)
+      yaw = Math.PI;
+      pitch = 0;
+      
       // Create player hands
       camera.children.slice().forEach(child => {
         if (child.userData?.isPlayerHands) {
@@ -4326,15 +4331,18 @@ function switchToPerseus() {
     function enterHadesBattle() {
       fadeToBlack(() => {
         currentScene = 'hades';
+        
+        // Reset skeleton warriors array before creating new battle
+        skeletonWarriors = [];
+        lastSkeletonSpawnTime = Date.now();
+        
         createHadesThrone();
         
         // Play intense battle music
         playBackgroundSound('battle');
         
         // Ensure player has lightning bolt for the battle (especially for mobile accessibility)
-        if (!inventory[0]) {
-          inventory[0] = 'lightning';
-        }
+        inventory[0] = 'lightning';
         updateInventoryUI();
         updateHeldItem();
         document.getElementById('inventory').style.display = 'flex';
@@ -4345,14 +4353,16 @@ function switchToPerseus() {
         updatePlayerLivesUI();
         updateHadesHealthUI();
         
+        // IMPORTANT: Set battle state immediately, don't wait for narration
+        isInBattle = true;
+        canAttack = true;
+        canMove = true;
+        
+        console.log('Battle started! isInBattle:', isInBattle, 'enemies:', enemies.length, 'canAttack:', canAttack);
+        
         showNarration("The dark portal transports me to the throne of the underworld...");
         showNarration("Everything I've done has been for this moment.");
         showNarration("HADES! YOUR REIGN OF TERROR ENDS NOW!", "Aeneas");
-        
-        pendingSceneAction = () => {
-          canMove = true;
-          isInBattle = true;
-        };
       });
     }
     
@@ -4608,20 +4618,34 @@ function switchToPerseus() {
     }
     
     function attack(type) {
-      if (!canAttack || !isInBattle) return;
+      console.log('Attack called:', type, 'canAttack:', canAttack, 'isInBattle:', isInBattle, 'enemies:', enemies.length);
+      
+      if (!canAttack) {
+        console.log('Attack blocked: canAttack is false');
+        return;
+      }
+      
+      // Allow attacks in battle OR if player has lightning bolt equipped
+      if (!isInBattle && currentScene !== 'hades') {
+        console.log('Attack blocked: not in battle mode');
+        return;
+      }
       
       canAttack = false;
       attackCooldown = 500;
       
       const damage = type === 'lightning' ? 35 : type === 'kick' ? 12 : type === 'punch' ? 8 : 15;
+      console.log('Dealing damage:', damage, 'to', enemies.length, 'potential targets');
       
       // Check if hitting Hades
       enemies.forEach(enemy => {
         if (enemy.userData.isHades) {
           const dist = playerPos.distanceTo(enemy.position);
-          if (dist < 6) {
+          console.log('Distance to Hades:', dist);
+          if (dist < 8) { // Increased range from 6 to 8
             enemy.userData.health -= damage;
             hadesHealth = Math.max(0, enemy.userData.health);
+            console.log('Hit Hades! Health now:', hadesHealth);
             playSound('hit');
             updateHadesHealthUI();
             
@@ -4646,8 +4670,10 @@ function switchToPerseus() {
         // Check if hitting skeletons
         if (enemy.userData.isSkeleton) {
           const dist = playerPos.distanceTo(enemy.position);
-          if (dist < 3) {
+          console.log('Distance to skeleton:', dist);
+          if (dist < 4) { // Increased range from 3 to 4
             enemy.userData.health -= damage;
+            console.log('Hit skeleton! Health now:', enemy.userData.health);
             playSound('hit');
             
             // Update skeleton health bar
