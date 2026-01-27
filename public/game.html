@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Aeneas: Descent to the Underworld</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Philosopher:ital@0;1&display=swap');
     
@@ -1015,7 +1016,7 @@
       <button class="platform-btn active" id="btn-pc">🖥️ PC</button>
       <button class="platform-btn" id="btn-mobile">📱 Mobile</button>
     </div>
-    <button class="start-btn" id="btn-start" onclick="window.__beginGame && window.__beginGame()">BEGIN JOURNEY</button>
+    <button class="start-btn" id="btn-start">BEGIN JOURNEY</button>
     <p id="controls-hint">Arrow Keys to move • WASD to look • Space to jump/attack • E to interact</p>
   </div>
   
@@ -1258,7 +1259,7 @@
     </div>
   </div>
 
-  <script src="/vendor/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script>
     // ============ AUDIO CONTEXT ============
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -1647,12 +1648,7 @@
       
       playerPos.set(0, 1.7, 10);
       camera.position.copy(playerPos);
-      yaw = Math.PI; // Face -Z direction (toward staircase at z=-30)
-      pitch = 0;
-      // Apply camera rotation immediately
-      camera.rotation.order = 'YXZ';
-      camera.rotation.y = yaw;
-      camera.rotation.x = pitch;
+      yaw = Math.PI;
       canMove = true;
       canOnlyMoveForward = false;
     }
@@ -5137,23 +5133,22 @@ function switchToPerseus() {
     
     // ============ INTERACTION ============
     function tryInteract() {
-      // Check for Charon
-      if (currentScene === 'styx') {
-        const charonDist = playerPos.distanceTo(new THREE.Vector3(0, 0, 10));
-        if (charonDist < 8) {
-          payCharon();
+      // Check for boss portal in mortal realm
+      if (currentScene === 'mortal') {
+        const portalPos = new THREE.Vector3(0, 1.7, 20);
+        const portalDist = playerPos.distanceTo(portalPos);
+        if (portalDist < 5) {
+          showNarration("A dark portal... I sense immense power beyond...");
+          showNarration("This leads directly to the throne of Hades!");
+          
+          setTimeout(() => {
+            enterHadesBattle();
+          }, 2000);
           return;
         }
       }
       
-      // Check for puzzle orbs
-      if (currentScene === 'puzzle') {
-        puzzleOrbs.forEach(orb => {
-          const dist = playerPos.distanceTo(orb.position);
-          if (dist < 3) {
-            collectOrb(orb.userData.orbIndex);
-          }
-        });
+      // Check for Charon
       if (currentScene === 'styx') {
         const charonDist = playerPos.distanceTo(new THREE.Vector3(0, 0, 10));
         if (charonDist < 8) {
@@ -5189,21 +5184,6 @@ function switchToPerseus() {
     
     function checkAutoTriggers() {
       if (sceneTransitioning) return;
-      
-      // Boss portal in mortal realm - walk through to teleport
-      if (currentScene === 'mortal') {
-        const portalPos = new THREE.Vector3(0, 1.7, 20);
-        const portalDist = playerPos.distanceTo(portalPos);
-        if (portalDist < 4) {
-          sceneTransitioning = true;
-          showNarration("The portal pulls me in... to face Hades!");
-          setTimeout(() => {
-            enterHadesBattle();
-            setTimeout(() => sceneTransitioning = false, 2000);
-          }, 1000);
-          return;
-        }
-      }
       
       // Mortal realm -> Staircase scene (when climbing high on stairs)
       // Staircase starts at z=-30, 80 steps at 1.8 run each = -174 total
@@ -5538,9 +5518,6 @@ function switchToPerseus() {
         alert('Error starting game: ' + error.message);
       }
     }
-
-    // Expose beginGame globally for the onclick handler
-    window.__beginGame = beginGame;
     
     // Add both click and touch handlers
     const btnPC = document.getElementById('btn-pc');
