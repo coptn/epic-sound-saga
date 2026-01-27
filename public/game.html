@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Aeneas: Descent to the Underworld</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Philosopher:ital@0;1&display=swap');
     
@@ -1259,8 +1258,22 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="/vendor/three.min.js"></script>
   <script>
+    // If the 3D engine fails to load (common in some sandbox/CSP environments),
+    // the menu button will appear to do nothing because the script crashes early.
+    if (!window.THREE) {
+      const hint = document.getElementById('controls-hint');
+      if (hint) hint.textContent = 'Error: failed to load 3D engine (THREE.js).';
+      const start = document.getElementById('btn-start');
+      if (start) {
+        start.textContent = 'LOAD ERROR';
+        start.setAttribute('disabled', 'true');
+        start.style.opacity = '0.7';
+        start.style.cursor = 'not-allowed';
+      }
+    }
+
     // ============ AUDIO CONTEXT ============
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx = null;
