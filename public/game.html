@@ -1267,12 +1267,59 @@
       if (hint) hint.textContent = 'Error: failed to load 3D engine (THREE.js).';
       const start = document.getElementById('btn-start');
       if (start) {
-        start.textContent = 'LOAD ERROR';
-        start.setAttribute('disabled', 'true');
-        start.style.opacity = '0.7';
-        start.style.cursor = 'not-allowed';
+        start.textContent = 'LOAD ERROR (3D ENGINE)';
       }
     }
+
+    // ============ BOOT DIAGNOSTICS ============
+    // Goal: even if the game crashes during boot, the BEGIN JOURNEY button should
+    // still respond and surface the real error (instead of silently doing nothing).
+    const __uwjBoot = (() => {
+      const hintEl = document.getElementById('controls-hint');
+      const startEl = document.getElementById('btn-start');
+      const set = (msg) => {
+        if (hintEl) hintEl.textContent = msg;
+      };
+      const fatal = (err) => {
+        // eslint-disable-next-line no-console
+        console.error('[UWJ] Fatal boot error:', err);
+        const message = (err && typeof err === 'object' && 'message' in err)
+          ? String(err.message)
+          : String(err);
+        set(`Error: ${message}`);
+        if (startEl) {
+          startEl.textContent = 'ERROR (SEE CONSOLE)';
+        }
+      };
+      return { set, fatal };
+    })();
+
+    window.addEventListener('error', (e) => {
+      __uwjBoot.fatal(e.error || new Error(e.message));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      __uwjBoot.fatal(e.reason);
+    });
+
+    // Attach an early, capture-phase handler so the button always reacts.
+    const __startBtn = document.getElementById('btn-start');
+    if (__startBtn) {
+      const callBegin = () => {
+        const fn = window.__UWJ_BEGIN_GAME__;
+        if (typeof fn === 'function') fn();
+        else __uwjBoot.set('Loading… (game boot not finished)');
+      };
+      __startBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        callBegin();
+      }, true);
+      __startBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        callBegin();
+      }, true);
+    }
+
+    try {
 
     // ============ AUDIO CONTEXT ============
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -5552,6 +5599,9 @@ function switchToPerseus() {
         alert('Error starting game: ' + error.message);
       }
     }
+
+    // Expose beginGame so the early boot handler can call it.
+    window.__UWJ_BEGIN_GAME__ = beginGame;
     
     // Add both click and touch handlers
     const btnPC = document.getElementById('btn-pc');
@@ -5563,9 +5613,8 @@ function switchToPerseus() {
     
     btnMobile.addEventListener('click', selectMobile);
     btnMobile.addEventListener('touchend', (e) => { e.preventDefault(); selectMobile(); });
-    
-    btnStart.addEventListener('click', beginGame);
-    btnStart.addEventListener('touchend', (e) => { e.preventDefault(); beginGame(); });
+    // NOTE: btnStart handlers are attached early (capture-phase) above to avoid
+    // "button does nothing" when a boot error prevents this file from finishing.
     
     // Auto-detect mobile
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -6404,6 +6453,10 @@ function switchToPerseus() {
             escapeCloseModal('escapeWireModal');
         }
     });
+
+    } catch (error) {
+      __uwjBoot.fatal(error);
+    }
 
   </script>
 </body>
