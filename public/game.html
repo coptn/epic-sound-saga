@@ -1015,7 +1015,7 @@
       <button class="platform-btn active" id="btn-pc">🖥️ PC</button>
       <button class="platform-btn" id="btn-mobile">📱 Mobile</button>
     </div>
-    <button class="start-btn" id="btn-start">BEGIN JOURNEY</button>
+    <button class="start-btn" id="btn-start" onclick="window.__beginGame && window.__beginGame()">BEGIN JOURNEY</button>
     <p id="controls-hint">Arrow Keys to move • WASD to look • Space to jump/attack • E to interact</p>
   </div>
   
@@ -1260,67 +1260,6 @@
 
   <script src="/vendor/three.min.js"></script>
   <script>
-    // If the 3D engine fails to load (common in some sandbox/CSP environments),
-    // the menu button will appear to do nothing because the script crashes early.
-    if (!window.THREE) {
-      const hint = document.getElementById('controls-hint');
-      if (hint) hint.textContent = 'Error: failed to load 3D engine (THREE.js).';
-      const start = document.getElementById('btn-start');
-      if (start) {
-        start.textContent = 'LOAD ERROR (3D ENGINE)';
-      }
-    }
-
-    // ============ BOOT DIAGNOSTICS ============
-    // Goal: even if the game crashes during boot, the BEGIN JOURNEY button should
-    // still respond and surface the real error (instead of silently doing nothing).
-    const __uwjBoot = (() => {
-      const hintEl = document.getElementById('controls-hint');
-      const startEl = document.getElementById('btn-start');
-      const set = (msg) => {
-        if (hintEl) hintEl.textContent = msg;
-      };
-      const fatal = (err) => {
-        // eslint-disable-next-line no-console
-        console.error('[UWJ] Fatal boot error:', err);
-        const message = (err && typeof err === 'object' && 'message' in err)
-          ? String(err.message)
-          : String(err);
-        set(`Error: ${message}`);
-        if (startEl) {
-          startEl.textContent = 'ERROR (SEE CONSOLE)';
-        }
-      };
-      return { set, fatal };
-    })();
-
-    window.addEventListener('error', (e) => {
-      __uwjBoot.fatal(e.error || new Error(e.message));
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      __uwjBoot.fatal(e.reason);
-    });
-
-    // Attach an early, capture-phase handler so the button always reacts.
-    const __startBtn = document.getElementById('btn-start');
-    if (__startBtn) {
-      const callBegin = () => {
-        const fn = window.__UWJ_BEGIN_GAME__;
-        if (typeof fn === 'function') fn();
-        else __uwjBoot.set('Loading… (game boot not finished)');
-      };
-      __startBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        callBegin();
-      }, true);
-      __startBtn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        callBegin();
-      }, true);
-    }
-
-    try {
-
     // ============ AUDIO CONTEXT ============
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx = null;
@@ -5600,8 +5539,8 @@ function switchToPerseus() {
       }
     }
 
-    // Expose beginGame so the early boot handler can call it.
-    window.__UWJ_BEGIN_GAME__ = beginGame;
+    // Expose beginGame globally for the onclick handler
+    window.__beginGame = beginGame;
     
     // Add both click and touch handlers
     const btnPC = document.getElementById('btn-pc');
@@ -5613,8 +5552,9 @@ function switchToPerseus() {
     
     btnMobile.addEventListener('click', selectMobile);
     btnMobile.addEventListener('touchend', (e) => { e.preventDefault(); selectMobile(); });
-    // NOTE: btnStart handlers are attached early (capture-phase) above to avoid
-    // "button does nothing" when a boot error prevents this file from finishing.
+    
+    btnStart.addEventListener('click', beginGame);
+    btnStart.addEventListener('touchend', (e) => { e.preventDefault(); beginGame(); });
     
     // Auto-detect mobile
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
@@ -6453,10 +6393,6 @@ function switchToPerseus() {
             escapeCloseModal('escapeWireModal');
         }
     });
-
-    } catch (error) {
-      __uwjBoot.fatal(error);
-    }
 
   </script>
 </body>
