@@ -1474,7 +1474,11 @@
     
     // Combat
     let lives = 3;
+    let playerCurrentHealth = 100;
+    let playerMaxHealth = 100; // Each health bar has 100 health
     let isInBattle = false;
+    let lastSkeletonSpawnTime = 0;
+    let skeletonSpawnInterval = 5000; // 5 seconds between skeleton spawns
     let hadesHealth = 100;
     let canAttack = true;
     let attackCooldown = 0;
@@ -1635,11 +1639,101 @@
       staircase.userData.stairRise = 0.25;
       staircase.userData.stairRun = 2.2;
       
+      // Boss fight portal behind spawn point
+      const bossPortal = createBossPortal();
+      bossPortal.position.set(0, 0, 20); // Behind spawn, player spawns at z=10 facing the staircase (z=-30)
+      scene.add(bossPortal);
+      sceneObjects.push(bossPortal);
+      bossPortal.userData.isBossPortal = true;
+      interactables.push(bossPortal);
+      
       playerPos.set(0, 1.7, 10);
       camera.position.copy(playerPos);
       yaw = Math.PI;
       canMove = true;
       canOnlyMoveForward = false;
+    }
+    
+    function createBossPortal() {
+      const group = new THREE.Group();
+      
+      // Portal ring
+      const ringGeo = new THREE.TorusGeometry(2.5, 0.3, 16, 32);
+      const ringMat = new THREE.MeshStandardMaterial({
+        color: 0x8800ff,
+        emissive: 0x4400aa,
+        emissiveIntensity: 0.8,
+        metalness: 0.5,
+        roughness: 0.3
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.y = 3;
+      ring.rotation.x = Math.PI / 2;
+      group.add(ring);
+      
+      // Inner swirling portal effect
+      const portalGeo = new THREE.CircleGeometry(2.2, 32);
+      const portalMat = new THREE.MeshBasicMaterial({
+        color: 0xff00ff,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+      });
+      const portal = new THREE.Mesh(portalGeo, portalMat);
+      portal.position.y = 3;
+      portal.rotation.x = Math.PI / 2;
+      group.add(portal);
+      
+      // Inner glow layer
+      const glowGeo = new THREE.CircleGeometry(1.8, 32);
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
+      });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.position.y = 3;
+      glow.position.z = 0.05;
+      glow.rotation.x = Math.PI / 2;
+      group.add(glow);
+      
+      // Portal light
+      const portalLight = new THREE.PointLight(0xff00ff, 2, 15);
+      portalLight.position.y = 3;
+      group.add(portalLight);
+      
+      // Stone base pillars
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.8 });
+      const pillarGeo = new THREE.CylinderGeometry(0.4, 0.5, 5, 12);
+      
+      const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
+      leftPillar.position.set(-3, 2.5, 0);
+      group.add(leftPillar);
+      
+      const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
+      rightPillar.position.set(3, 2.5, 0);
+      group.add(rightPillar);
+      
+      // Floating runes around portal
+      const runeMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+      for (let i = 0; i < 8; i++) {
+        const runeGeo = new THREE.BoxGeometry(0.15, 0.3, 0.05);
+        const rune = new THREE.Mesh(runeGeo, runeMat);
+        const angle = (i / 8) * Math.PI * 2;
+        rune.position.set(
+          Math.cos(angle) * 3,
+          3 + Math.sin(angle * 2) * 0.5,
+          Math.sin(angle) * 0.3
+        );
+        rune.rotation.z = angle;
+        group.add(rune);
+      }
+      
+      // Label above portal
+      // (text handled via narration when player gets close)
+      
+      return group;
     }
     
     function createTree() {
@@ -4461,8 +4555,30 @@ function switchToPerseus() {
       
       // Metadata
       group.userData.isSkeleton = true;
-      group.userData.health = 30;
+      group.userData.health = 50;
+      group.userData.maxHealth = 50;
       group.userData.speed = 2;
+      
+      // Health bar above skeleton
+      const healthBarGroup = new THREE.Group();
+      const healthBarBg = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.8, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide })
+      );
+      healthBarBg.position.y = 2.8;
+      healthBarGroup.add(healthBarBg);
+      
+      const healthBarFill = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.78, 0.08),
+        new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide })
+      );
+      healthBarFill.position.y = 2.8;
+      healthBarFill.position.z = 0.01;
+      healthBarGroup.add(healthBarFill);
+      
+      group.add(healthBarGroup);
+      group.userData.healthBar = healthBarFill;
+      group.userData.healthBarGroup = healthBarGroup;
       
       return group;
     }
@@ -4490,7 +4606,7 @@ function switchToPerseus() {
       canAttack = false;
       attackCooldown = 500;
       
-      const damage = type === 'lightning' ? 20 : type === 'kick' ? 12 : type === 'punch' ? 8 : 15;
+      const damage = type === 'lightning' ? 35 : type === 'kick' ? 12 : type === 'punch' ? 8 : 15;
       
       // Check if hitting Hades
       enemies.forEach(enemy => {
@@ -4527,6 +4643,13 @@ function switchToPerseus() {
             enemy.userData.health -= damage;
             playSound('hit');
             
+            // Update skeleton health bar
+            if (enemy.userData.healthBar) {
+              const healthPercent = Math.max(0, enemy.userData.health / enemy.userData.maxHealth);
+              enemy.userData.healthBar.scale.x = healthPercent;
+              enemy.userData.healthBar.position.x = (1 - healthPercent) * -0.39;
+            }
+            
             if (enemy.userData.health <= 0) {
               scene.remove(enemy);
               skeletonWarriors = skeletonWarriors.filter(s => s !== enemy);
@@ -4555,21 +4678,22 @@ function switchToPerseus() {
     function hadesAttack() {
       if (!isInBattle || hadesHealth <= 0) return;
       
-      const attackType = Math.random();
       const hadesEntity = enemies.find(e => e.userData.isHades);
+      const now = Date.now();
       
-      // More aggressive skeleton spawning - up to 5 at once
-      if (attackType < 0.5 && skeletonWarriors.length < 5) {
-        // Spawn 1-2 skeleton warriors
-        const numToSpawn = Math.random() < 0.3 ? 2 : 1;
-        for (let i = 0; i < numToSpawn && skeletonWarriors.length < 5; i++) {
-          const skeleton = spawnSkeletonWarrior();
-          if (skeleton) {
-            console.log('Spawned skeleton warrior, total:', skeletonWarriors.length);
-          }
+      // Skeleton spawning on a fixed 5-second timer (1 skeleton every 5 seconds)
+      if (now - lastSkeletonSpawnTime >= skeletonSpawnInterval && skeletonWarriors.length < 5) {
+        lastSkeletonSpawnTime = now;
+        const skeleton = spawnSkeletonWarrior();
+        if (skeleton) {
+          console.log('Spawned skeleton warrior, total:', skeletonWarriors.length);
+          showNarration("Hades summons a skeleton warrior!", "");
         }
-        showNarration("Hades summons skeleton warriors!", "");
-      } else if (attackType < 0.75) {
+      }
+      
+      // Other attacks (beam or ground slam)
+      const attackType = Math.random();
+      if (attackType < 0.5) {
         // Dark beam attack
         if (hadesEntity) {
           const beam = new THREE.Mesh(
@@ -4646,7 +4770,7 @@ function switchToPerseus() {
       if (playerCurrentHealth <= 0) {
         // Lost one life
         lives--;
-        playerCurrentHealth = 100;
+        playerCurrentHealth = playerMaxHealth;
         
         // Play death/bruh sound when losing a life
         playDeathSound();
@@ -4665,8 +4789,9 @@ function switchToPerseus() {
       
       // Reset boss fight
       lives = 3;
-      playerCurrentHealth = 100;
+      playerCurrentHealth = playerMaxHealth;
       hadesHealth = 300; // Match increased HP
+      lastSkeletonSpawnTime = 0; // Reset skeleton spawn timer
       const hadesEntity = enemies.find(e => e.userData.isHades);
       if (hadesEntity) {
         hadesEntity.userData.health = 300;
@@ -4785,7 +4910,7 @@ function switchToPerseus() {
         } else if (i === lives) {
           // Current life being used
           lifeContainer.classList.remove('lost');
-          lifeFill.style.width = playerCurrentHealth + '%';
+          lifeFill.style.width = (playerCurrentHealth / playerMaxHealth * 100) + '%';
         } else {
           // Lost life
           lifeContainer.classList.add('lost');
@@ -5009,6 +5134,21 @@ function switchToPerseus() {
     
     // ============ INTERACTION ============
     function tryInteract() {
+      // Check for boss portal in mortal realm
+      if (currentScene === 'mortal') {
+        const portalPos = new THREE.Vector3(0, 1.7, 20);
+        const portalDist = playerPos.distanceTo(portalPos);
+        if (portalDist < 5) {
+          showNarration("A dark portal... I sense immense power beyond...");
+          showNarration("This leads directly to the throne of Hades!");
+          
+          setTimeout(() => {
+            enterHadesBattle();
+          }, 2000);
+          return;
+        }
+      }
+      
       // Check for Charon
       if (currentScene === 'styx') {
         const charonDist = playerPos.distanceTo(new THREE.Vector3(0, 0, 10));
@@ -5246,6 +5386,11 @@ function switchToPerseus() {
             
             // Look at player
             enemy.lookAt(playerPos.x, enemy.position.y, playerPos.z);
+            
+            // Make health bar face camera
+            if (enemy.userData.healthBarGroup) {
+              enemy.userData.healthBarGroup.lookAt(camera.position);
+            }
             
             // Move towards player if not too close
             if (distToPlayer > 2) {
