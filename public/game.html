@@ -1648,7 +1648,12 @@
       
       playerPos.set(0, 1.7, 10);
       camera.position.copy(playerPos);
-      yaw = Math.PI;
+      yaw = Math.PI; // Face -Z direction (toward staircase at z=-30)
+      pitch = 0;
+      // Apply camera rotation immediately
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
       canMove = true;
       canOnlyMoveForward = false;
     }
@@ -5133,22 +5138,23 @@ function switchToPerseus() {
     
     // ============ INTERACTION ============
     function tryInteract() {
-      // Check for boss portal in mortal realm
-      if (currentScene === 'mortal') {
-        const portalPos = new THREE.Vector3(0, 1.7, 20);
-        const portalDist = playerPos.distanceTo(portalPos);
-        if (portalDist < 5) {
-          showNarration("A dark portal... I sense immense power beyond...");
-          showNarration("This leads directly to the throne of Hades!");
-          
-          setTimeout(() => {
-            enterHadesBattle();
-          }, 2000);
+      // Check for Charon
+      if (currentScene === 'styx') {
+        const charonDist = playerPos.distanceTo(new THREE.Vector3(0, 0, 10));
+        if (charonDist < 8) {
+          payCharon();
           return;
         }
       }
       
-      // Check for Charon
+      // Check for puzzle orbs
+      if (currentScene === 'puzzle') {
+        puzzleOrbs.forEach(orb => {
+          const dist = playerPos.distanceTo(orb.position);
+          if (dist < 3) {
+            collectOrb(orb.userData.orbIndex);
+          }
+        });
       if (currentScene === 'styx') {
         const charonDist = playerPos.distanceTo(new THREE.Vector3(0, 0, 10));
         if (charonDist < 8) {
@@ -5184,6 +5190,21 @@ function switchToPerseus() {
     
     function checkAutoTriggers() {
       if (sceneTransitioning) return;
+      
+      // Boss portal in mortal realm - walk through to teleport
+      if (currentScene === 'mortal') {
+        const portalPos = new THREE.Vector3(0, 1.7, 20);
+        const portalDist = playerPos.distanceTo(portalPos);
+        if (portalDist < 4) {
+          sceneTransitioning = true;
+          showNarration("The portal pulls me in... to face Hades!");
+          setTimeout(() => {
+            enterHadesBattle();
+            setTimeout(() => sceneTransitioning = false, 2000);
+          }, 1000);
+          return;
+        }
+      }
       
       // Mortal realm -> Staircase scene (when climbing high on stairs)
       // Staircase starts at z=-30, 80 steps at 1.8 run each = -174 total
