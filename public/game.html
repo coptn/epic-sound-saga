@@ -3494,9 +3494,13 @@
       
       createMortalRealm();
       
-      // IMPORTANT: Ensure player faces staircase (negative Z direction)
-      // yaw = Math.PI makes camera look toward -Z (where staircase is at z=-30)
-      yaw = Math.PI;
+      // IMPORTANT: Set spawn direction AFTER createMortalRealm()
+      // Player spawns at z=10 facing the staircase at z=-30
+      // yaw = Math.PI makes camera look toward -Z (staircase direction)
+      // Portal is behind at z=20, so player faces away from it
+      playerPos.set(0, 1.7, 10);
+      camera.position.copy(playerPos);
+      yaw = Math.PI;  // Face toward negative Z (staircase)
       pitch = 0;
       
       // Create player hands
@@ -5002,10 +5006,14 @@ function switchToPerseus() {
       if (!isMobile && gameState === 'playing') {
         if (document.pointerLockElement !== renderer.domElement) {
           renderer.domElement.requestPointerLock();
-        } else if (isDialogueOpen) {
-          advanceDialogue();
-        } else if (isInBattle) {
-          attack(inventory[selectedSlot] || 'melee');
+        } else {
+          // Pointer is locked - handle interactions
+          if (isDialogueOpen) {
+            advanceDialogue();
+          } else if (isInBattle || currentScene === 'hades') {
+            // Attack when in battle OR in hades scene (PC fix)
+            attack(inventory[selectedSlot] || 'melee');
+          }
         }
       }
     });
@@ -5207,18 +5215,29 @@ function switchToPerseus() {
       if (sceneTransitioning) return;
       
       // Mortal realm -> Boss portal (automatic teleport when stepping under portal)
-      // Portal is at z=20, player stepping close triggers auto-teleport
+      // Portal is at z=20, player stepping close triggers auto-teleport with password
       if (currentScene === 'mortal') {
         const portalPos = new THREE.Vector3(0, 1.7, 20);
         const portalDist = playerPos.distanceTo(portalPos);
         if (portalDist < 4) { // Auto-trigger when close to portal
           sceneTransitioning = true;
-          showNarration("A dark portal... I sense immense power beyond...");
-          showNarration("This leads directly to the throne of Hades!");
-          setTimeout(() => {
-            enterHadesBattle();
+          
+          // Prompt for password
+          const password = prompt("The portal whispers: 'Speak the sacred number to enter the realm of the dead...'");
+          
+          if (password === "67") {
+            showNarration("The portal accepts your offering...");
+            showNarration("This leads directly to the throne of Hades!");
+            setTimeout(() => {
+              enterHadesBattle();
+              sceneTransitioning = false;
+            }, 2000);
+          } else {
+            showNarration("The portal rejects you... The number was incorrect.");
             sceneTransitioning = false;
-          }, 2000);
+            // Push player back slightly
+            playerPos.z -= 3;
+          }
           return;
         }
       }
