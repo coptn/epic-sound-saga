@@ -1399,6 +1399,7 @@
     
     function playSound(type) {
       if (!audioCtx) return;
+      const sfxMix = soundVolume * sfxVolume;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
@@ -1407,34 +1408,34 @@
       switch(type) {
         case 'step':
           osc.frequency.value = 80 + Math.random() * 40;
-          gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.1 * sfxMix, audioCtx.currentTime);
           gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.01, audioCtx.currentTime + 0.1);
           osc.start(); osc.stop(audioCtx.currentTime + 0.1);
           break;
         case 'thunder':
           osc.type = 'sawtooth';
           osc.frequency.value = 60;
-          gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.4 * sfxMix, audioCtx.currentTime);
           gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.01, audioCtx.currentTime + 0.5);
           osc.start(); osc.stop(audioCtx.currentTime + 0.5);
           break;
         case 'hit':
           osc.type = 'square';
           osc.frequency.value = 150;
-          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3 * sfxMix, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 0.15);
           break;
         case 'collect':
           osc.type = 'sine';
           osc.frequency.setValueAtTime(400, audioCtx.currentTime);
           osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
-          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.2 * sfxMix, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 0.2);
           break;
         case 'door':
           osc.type = 'triangle';
           osc.frequency.value = 50;
-          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3 * sfxMix, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 1);
           break;
       }
@@ -3709,11 +3710,11 @@
       
       // IMPORTANT: Set spawn direction AFTER createMortalRealm()
       // Player spawns at z=10 facing the staircase at z=-30
-      // yaw = Math.PI makes camera look toward -Z (staircase direction)
+      // In three.js the camera faces -Z by default, so yaw = 0 faces the staircase
       // Portal is behind at z=20, so player faces away from it
       playerPos.set(0, 1.7, 10);
       camera.position.copy(playerPos);
-      yaw = Math.PI;  // Face toward negative Z (staircase)
+      yaw = 0;  // Face toward negative Z (staircase)
       pitch = 0;
       
       // Apply camera rotation immediately so player sees correct direction on first frame
@@ -5198,6 +5199,9 @@ function switchToPerseus() {
       if (e.code === 'KeyE') {
         if (isDialogueOpen) {
           advanceDialogue();
+        } else if (isInBattle || currentScene === 'hades') {
+          // PC combat: E swings weapon
+          attack(inventory[selectedSlot] || 'melee');
         } else {
           tryInteract();
         }
@@ -5233,6 +5237,28 @@ function switchToPerseus() {
             attack(inventory[selectedSlot] || 'melee');
           }
         }
+      }
+    });
+
+    // PC combat: right-click swings weapon (and never opens context menu)
+    renderer.domElement.addEventListener('contextmenu', (e) => {
+      if (!isMobile && gameState === 'playing') e.preventDefault();
+    });
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (isMobile || gameState !== 'playing') return;
+      if (e.button !== 2) return; // right click
+      e.preventDefault();
+
+      if (document.pointerLockElement !== renderer.domElement) {
+        renderer.domElement.requestPointerLock();
+        return;
+      }
+
+      if (isDialogueOpen) {
+        advanceDialogue();
+      } else if (isInBattle || currentScene === 'hades') {
+        attack(inventory[selectedSlot] || 'melee');
       }
     });
     
