@@ -333,6 +333,42 @@
       border-radius: 15px;
       border: 3px solid #8800ff;
       box-shadow: 0 0 30px rgba(136, 0, 255, 0.5);
+      overflow: visible;
+    }
+
+    /* Boss-battle messages: non-blocking stack above boss bar */
+    #boss-messages {
+      position: absolute;
+      left: 50%;
+      top: -12px;
+      transform: translate(-50%, -100%);
+      width: min(560px, calc(100vw - 40px));
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 200;
+    }
+
+    .boss-msg {
+      background: rgba(0, 0, 0, 0.75);
+      border: 1px solid rgba(255, 0, 255, 0.45);
+      box-shadow: 0 0 18px rgba(255, 0, 255, 0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      color: #f4e9ff;
+      font-size: 1rem;
+      line-height: 1.35;
+      backdrop-filter: blur(6px);
+    }
+
+    .boss-msg .boss-speaker {
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      color: #ff00ff;
+      margin-bottom: 4px;
+      text-shadow: 0 0 10px rgba(255, 0, 255, 0.6);
     }
 
     #hades-health-bar .boss-name {
@@ -1241,6 +1277,7 @@
 
   <!-- Hades Health Bar -->
   <div id="hades-health-bar">
+    <div id="boss-messages" aria-live="polite"></div>
     <div class="boss-name">💀 HADES - GOD OF THE UNDERWORLD 💀</div>
     <div class="health-bar-outer">
       <div class="health-bar-inner" id="hades-health-fill" style="width: 100%;"></div>
@@ -1392,53 +1429,96 @@
     // ============ AUDIO CONTEXT ============
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx = null;
+
+    // WebAudio mixer (fixes mobile volume control limitations)
+    let masterGain = null;
+    let musicGain = null;
+    let sfxGain = null;
+    let currentBgSource = null;
+    let deathSoundSource = null;
+
+    function ensureAudioMixer() {
+      if (!audioCtx) return;
+      if (masterGain && musicGain && sfxGain) return;
+
+      masterGain = audioCtx.createGain();
+      musicGain = audioCtx.createGain();
+      sfxGain = audioCtx.createGain();
+
+      musicGain.connect(masterGain);
+      sfxGain.connect(masterGain);
+      masterGain.connect(audioCtx.destination);
+    }
+
+    function applyVolumes() {
+      // Mixer path (preferred, works on iOS)
+      if (masterGain) masterGain.gain.value = soundVolume;
+      if (musicGain) musicGain.gain.value = musicVolume;
+      if (sfxGain) sfxGain.gain.value = sfxVolume;
+
+      // Fallback (non-iOS / if mixer not available)
+      if (currentBgAudio && !currentBgSource) {
+        currentBgAudio.volume = soundVolume * musicVolume;
+      }
+      if (deathSound && !deathSoundSource) {
+        deathSound.volume = soundVolume * sfxVolume;
+      }
+    }
     
     function initAudio() {
       if (!audioCtx) audioCtx = new AudioContext();
+      ensureAudioMixer();
+      // Mobile browsers often start suspended; resume on first user gesture.
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
     }
     
     function playSound(type) {
       if (!audioCtx) return;
-      const sfxMix = soundVolume * sfxVolume;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
-      gain.connect(audioCtx.destination);
+      // Route through mixer when available so Master/SFX sliders work everywhere (incl. mobile)
+      ensureAudioMixer();
+      gain.connect(sfxGain || audioCtx.destination);
       
       switch(type) {
         case 'step':
           osc.frequency.value = 80 + Math.random() * 40;
-          gain.gain.setValueAtTime(0.1 * sfxMix, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
           gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.01, audioCtx.currentTime + 0.1);
           osc.start(); osc.stop(audioCtx.currentTime + 0.1);
           break;
         case 'thunder':
           osc.type = 'sawtooth';
           osc.frequency.value = 60;
-          gain.gain.setValueAtTime(0.4 * sfxMix, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
           gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.01, audioCtx.currentTime + 0.5);
           osc.start(); osc.stop(audioCtx.currentTime + 0.5);
           break;
         case 'hit':
           osc.type = 'square';
           osc.frequency.value = 150;
-          gain.gain.setValueAtTime(0.3 * sfxMix, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 0.15);
           break;
         case 'collect':
           osc.type = 'sine';
           osc.frequency.setValueAtTime(400, audioCtx.currentTime);
           osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
-          gain.gain.setValueAtTime(0.2 * sfxMix, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 0.2);
           break;
         case 'door':
           osc.type = 'triangle';
           osc.frequency.value = 50;
-          gain.gain.setValueAtTime(0.3 * sfxMix, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
           osc.start(); osc.stop(audioCtx.currentTime + 1);
           break;
       }
+
+      applyVolumes();
     }
 
     // ENHANCEMENT: Background Music & Pause System
@@ -1466,12 +1546,26 @@
     function preloadDeathSound() {
       deathSound = new Audio(audioFiles.death);
       deathSound.preload = 'auto';
+
+      // Route through mixer so SFX/Master sliders work on mobile
+      if (audioCtx && audioCtx.createMediaElementSource) {
+        try {
+          ensureAudioMixer();
+          deathSoundSource = audioCtx.createMediaElementSource(deathSound);
+          deathSoundSource.connect(sfxGain || audioCtx.destination);
+          deathSound.volume = 1;
+        } catch (e) {
+          // Some browsers forbid re-wrapping the same element; fallback to element volume
+          deathSoundSource = null;
+        }
+      }
+      applyVolumes();
     }
 
     function playDeathSound() {
       if (deathSound) {
         deathSound.currentTime = 0;
-        deathSound.volume = soundVolume * sfxVolume;
+        if (!deathSoundSource) deathSound.volume = soundVolume * sfxVolume;
         deathSound.play().catch(e => console.log('Death sound failed:', e));
       }
       
@@ -1492,7 +1586,24 @@
       
       currentBgAudio = new Audio(audioFile);
       currentBgAudio.loop = true;
-      currentBgAudio.volume = soundVolume * musicVolume;
+
+      // On iOS, HTMLAudioElement.volume is effectively ignored.
+      // Route through WebAudio mixer when available.
+      if (audioCtx && audioCtx.createMediaElementSource) {
+        try {
+          ensureAudioMixer();
+          currentBgSource = audioCtx.createMediaElementSource(currentBgAudio);
+          currentBgSource.connect(musicGain || audioCtx.destination);
+          currentBgAudio.volume = 1;
+        } catch (e) {
+          currentBgSource = null;
+          currentBgAudio.volume = soundVolume * musicVolume;
+        }
+      } else {
+        currentBgAudio.volume = soundVolume * musicVolume;
+      }
+
+      applyVolumes();
       
       if (!isPaused) {
         currentBgAudio.play().catch(e => console.log('Audio play failed:', e));
@@ -1505,12 +1616,15 @@
         currentBgAudio.currentTime = 0;
         currentBgAudio = null;
       }
+
+      if (currentBgSource) {
+        try { currentBgSource.disconnect(); } catch (e) {}
+        currentBgSource = null;
+      }
     }
 
     function updateMusicVolume() {
-      if (currentBgAudio) {
-        currentBgAudio.volume = soundVolume * musicVolume;
-      }
+      applyVolumes();
     }
 
     // Pause menu volume controls
@@ -1529,6 +1643,7 @@
     document.getElementById('sfx-volume').addEventListener('input', (e) => {
       sfxVolume = e.target.value / 100;
       document.getElementById('sfx-value').textContent = e.target.value;
+      applyVolumes();
     });
 
     // Pause button handler
@@ -1862,7 +1977,12 @@
       
       playerPos.set(0, 1.7, 10);
       camera.position.copy(playerPos);
-      yaw = Math.PI;
+      // Face the staircase (toward -Z). The portal is behind at +Z.
+      yaw = 0;
+      pitch = 0;
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
       canMove = true;
       canOnlyMoveForward = false;
     }
@@ -3633,7 +3753,44 @@
     }
     
     // ============ DIALOGUE SYSTEM ============
+    function pushBossMessage(text, speaker = '') {
+      const host = document.getElementById('boss-messages');
+      if (!host) return;
+
+      const msg = document.createElement('div');
+      msg.className = 'boss-msg';
+
+      if (speaker && speaker.trim()) {
+        const sp = document.createElement('span');
+        sp.className = 'boss-speaker';
+        sp.textContent = speaker;
+        msg.appendChild(sp);
+      }
+
+      const body = document.createElement('div');
+      body.textContent = text;
+      msg.appendChild(body);
+
+      host.appendChild(msg);
+
+      // Overlap/stack, auto-expire (no dismiss controls; never blocks input)
+      const ttl = 5000;
+      setTimeout(() => {
+        if (msg.parentNode === host) host.removeChild(msg);
+      }, ttl);
+
+      // Keep a sane cap
+      while (host.children.length > 6) {
+        host.removeChild(host.firstElementChild);
+      }
+    }
+
     function showNarration(text, speaker = 'Your Consciousness') {
+      // Boss battle: show non-blocking stacked messages above the boss health bar.
+      if (isInBattle && currentScene === 'hades') {
+        pushBossMessage(text, speaker === 'Your Consciousness' ? '' : speaker);
+        return;
+      }
       dialogueQueue.push({ text, speaker });
       if (!isDialogueOpen) {
         displayNextDialogue();
@@ -4554,6 +4711,12 @@ function switchToPerseus() {
     function enterHadesBattle() {
       fadeToBlack(() => {
         currentScene = 'hades';
+
+        // Boss battle should never be blocked by the narration dialogue box
+        dialogueQueue = [];
+        isDialogueOpen = false;
+        const narratorBox = document.getElementById('narrator-box');
+        if (narratorBox) narratorBox.style.display = 'none';
         
         // Reset skeleton warriors array before creating new battle
         skeletonWarriors = [];
@@ -5240,27 +5403,52 @@ function switchToPerseus() {
       }
     });
 
-    // PC combat: right-click swings weapon (and never opens context menu)
-    renderer.domElement.addEventListener('contextmenu', (e) => {
+    // PC combat: right-click swings weapon (robust: works anywhere on screen)
+    let pendingAttackOnPointerLock = false;
+
+    function canHandleCombatInput() {
+      if (isMobile) return false;
+      if (gameState !== 'playing') return false;
+      if (isPaused) return false;
+      if (portalPasswordActive) return false;
+      return (isInBattle || currentScene === 'hades');
+    }
+
+    function performCombatAttack() {
+      attack(inventory[selectedSlot] || 'melee');
+    }
+
+    // Prevent the browser context menu from ever stealing right-click
+    document.addEventListener('contextmenu', (e) => {
       if (!isMobile && gameState === 'playing') e.preventDefault();
+    }, { capture: true });
+
+    // If we requested pointer lock via right-click, attack immediately once locked
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement === renderer.domElement && pendingAttackOnPointerLock) {
+        pendingAttackOnPointerLock = false;
+        if (canHandleCombatInput()) performCombatAttack();
+      }
     });
 
-    renderer.domElement.addEventListener('mousedown', (e) => {
-      if (isMobile || gameState !== 'playing') return;
-      if (e.button !== 2) return; // right click
+    // Use a document-level handler so "right click anywhere" works (not just on the canvas)
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 2) return;
+      if (!canHandleCombatInput()) return;
       e.preventDefault();
 
       if (document.pointerLockElement !== renderer.domElement) {
+        pendingAttackOnPointerLock = true;
         renderer.domElement.requestPointerLock();
         return;
       }
 
       if (isDialogueOpen) {
         advanceDialogue();
-      } else if (isInBattle || currentScene === 'hades') {
-        attack(inventory[selectedSlot] || 'melee');
+      } else {
+        performCombatAttack();
       }
-    });
+    }, { capture: true });
     
     // Mobile controls - track multiple touch points independently
     let lookTouchId = null;
