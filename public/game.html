@@ -1761,6 +1761,7 @@
 
     // ============ PORTAL PASSWORD UI ============
     let portalPasswordActive = false;
+    let portalUsed = false; // Prevents re-triggering after successful entry
     let savedCanMove = false;
     let savedCanLook = false;
 
@@ -1802,9 +1803,12 @@
       const password = input.value.trim();
       
       if (password === "67") {
-        // Immediately hide the UI and set flag BEFORE any async operations
-        document.getElementById('portal-password-ui').style.display = 'none';
+        // Mark portal as used FIRST to prevent any re-triggering
+        portalUsed = true;
         portalPasswordActive = false;
+        
+        // Hide the UI immediately
+        document.getElementById('portal-password-ui').style.display = 'none';
         
         showNarration("The portal accepts your offering...");
         showNarration("This leads directly to the throne of Hades!");
@@ -5764,7 +5768,7 @@ function switchToPerseus() {
       
       // Mortal realm -> Boss portal (automatic teleport when stepping under portal)
       // Portal is at z=20, player stepping close triggers password UI
-      if (currentScene === 'mortal') {
+      if (currentScene === 'mortal' && !portalUsed) {
         const portalPos = new THREE.Vector3(0, 1.7, 20);
         const portalDist = playerPos.distanceTo(portalPos);
         if (portalDist < 4) { // Auto-trigger when close to portal
